@@ -342,22 +342,26 @@ bool rlc_am_status_pdu::unpack(const byte_buffer& buf)
     }
   } else {
     // 18-bit SN format
-    // ACK_SN: bits 4-7 of byte0 + all of byte1 + upper 6 bits of byte2
+    // ACK_SN: bits 0-3 of byte0 (4 bits for ACK_SN[17:14]) + byte1 (8 bits for ACK_SN[13:6]) + upper 6 bits of byte2 (6 bits for ACK_SN[5:0])
+    // Total: 18 bits
     if (buf.length() < 3) {
       return false;
     }
-    ack_sn = ((static_cast<uint32_t>(buf[0]) & 0x0f) << 12) | (static_cast<uint32_t>(buf[1]) << 4) | (static_cast<uint32_t>(buf[2]) >> 2);
+    ack_sn = ((static_cast<uint32_t>(buf[0]) & 0x0f) << 14) | (static_cast<uint32_t>(buf[1]) << 6) | ((static_cast<uint32_t>(buf[2]) >> 2) & 0x3f);
 
-    // E1 bit (bit 5 of byte3)
-    uint8_t byte3 = buf[3];
-    bool e1 = (byte3 & 0x20) != 0;
+    // E1 bit (bit 5 of byte2) - check if buffer has at least 3 bytes
+    bool e1 = false;
+    if (buf.length() >= 3) {
+      uint8_t byte2 = buf[2];
+      e1 = (byte2 & 0x20) != 0;
+    }
 
     if (!e1) {
       return true;
     }
 
-    // Parse NACKs
-    size_t offset = 4;
+    // Parse NACKs - start after the 3-byte ACK_SN header
+    size_t offset = 3;
     while (offset < buf.length()) {
       if (offset + 3 > buf.length()) {
         return false;
@@ -493,22 +497,20 @@ size_t rlc_am_status_pdu::pack(span<uint8_t> buf) const
       if (buf.size() < 3) {
         return 0;
       }
-      buf[0] = 0x0e;  // D/C=0, CPT=000
-      buf[1] = static_cast<uint8_t>((ack_sn >> 12) & 0xff);
-      buf[2] = static_cast<uint8_t>(((ack_sn & 0xfff) >> 6) & 0xff);
-      // E1=0, R=0
+      buf[0] = static_cast<uint8_t>((ack_sn >> 14) & 0x0f);  // D/C=0, CPT=000, ACK_SN[17:14]
+      buf[1] = static_cast<uint8_t>((ack_sn >> 6) & 0xff);   // ACK_SN[13:6]
+      buf[2] = static_cast<uint8_t>((ack_sn & 0x3f) << 2);   // ACK_SN[5:0] + E1=0 + R=0
       return 3;
     }
 
-    if (buf.size() < 4) {
+    if (buf.size() < 3) {
       return 0;
     }
-    buf[0] = 0x0e;  // D/C=0, CPT=000
-    buf[1] = static_cast<uint8_t>((ack_sn >> 12) & 0xff);
-    buf[2] = static_cast<uint8_t>(((ack_sn & 0xfff) >> 6) & 0xff);
-    buf[3] = 0x20;  // E1=1, R=0
+    buf[0] = static_cast<uint8_t>((ack_sn >> 14) & 0x0f);  // D/C=0, CPT=000, ACK_SN[17:14]
+    buf[1] = static_cast<uint8_t>((ack_sn >> 6) & 0xff);   // ACK_SN[13:6]
+    buf[2] = static_cast<uint8_t>(((ack_sn & 0x3f) << 2) | 0x02);  // ACK_SN[5:0] + E1=1 + R=0
 
-    offset = 4;
+    offset = 3;  // Start NACK entries at offset 3
 
     for (size_t i = 0; i < nacks.size(); ++i) {
       const rlc_am_status_nack& nack = nacks[i];
@@ -517,17 +519,20 @@ size_t rlc_am_status_pdu::pack(span<uint8_t> buf) const
         return 0;
       }
 
-      uint8_t nibble = 0x20;  // E1=1
+      uint8_t flags = 0;
+      if (i < nacks.size() - 1) {
+        flags |= 0x20;  // E1=1 (bit 5)
+      }
       if (nack.has_so) {
-        nibble |= 0x20;  // E2=1
+        flags |= 0x10;  // E2=1 (bit 4)
       }
       if (nack.has_nack_range) {
-        nibble |= 0x10;  // E3=1
+        flags |= 0x08;  // E3=1 (bit 3)
       }
 
       buf[offset] = static_cast<uint8_t>((nack.nack_sn >> 10) & 0xff);
       buf[offset + 1] = static_cast<uint8_t>((nack.nack_sn >> 2) & 0xff);
-      buf[offset + 2] = static_cast<uint8_t>(((nack.nack_sn & 0x03) << 6) | nibble);
+      buf[offset + 2] = static_cast<uint8_t>(((nack.nack_sn & 0x03) << 6) | flags);
       offset += 3;
 
       if (nack.has_so) {
