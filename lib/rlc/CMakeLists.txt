@@ -19,6 +19,7 @@
 #
 
 set(SOURCES
+  rlc_um_pdu.cpp
   rlc_am_pdu.cpp
   rlc_bearer_metrics_collector.cpp
   rlc_factory.cpp

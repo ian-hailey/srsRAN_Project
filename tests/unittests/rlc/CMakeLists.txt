@@ -46,7 +46,7 @@ target_include_directories(rlc_um_test PRIVATE ${CMAKE_SOURCE_DIR})
 gtest_discover_tests(rlc_um_test)
 
 add_executable(rlc_um_pdu_test rlc_um_pdu_test.cpp)
-target_link_libraries(rlc_um_pdu_test srsran_support srslog gtest gtest_main)
+target_link_libraries(rlc_um_pdu_test srsran_rlc srsran_support srslog gtest gtest_main)
 target_include_directories(rlc_um_pdu_test PRIVATE ${CMAKE_SOURCE_DIR})
 gtest_discover_tests(rlc_um_pdu_test)
 
