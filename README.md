@@ -1,3 +1,16 @@
+# 🤖 LLM 5G Protocol Stack Re-implementation Experiment
+
+**Welcome to this research fork of the srsRAN_Project.** 
+
+This repository was used to conduct an experiment evaluating the software engineering capabilities of modern Large Language Models (LLMs) within the telecommunications domain. The objective was to determine how effectively different AI models (Gemini, DeepSeek, Qwen, Gemma, MiniMax) could autonomously re-implement the 3GPP RLC (Radio Link Control) layer purely from the 3GPP 38.322 specifications and unit tests.
+
+👉 **[Read the full experiment methodology, model chat logs, and results here](llm_eval/LLM_RLC_EXPERIMENT.md)** 📊
+
+---
+*(The original srsRAN_Project README follows below)*
+
+---
+
 > [!IMPORTANT]
 > Project transition notice: srsRAN Project is now [OCUDU](https://ocudu.org). As of December 2025, all development has transitioned to the new [repository](https://gitlab.com/ocudu/ocudu). This repository will be archived and is no longer maintained. For details and discussion, see the post [here](https://github.com/srsran/srsRAN_Project/discussions/1470).
 

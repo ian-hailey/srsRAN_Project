@@ -1,0 +1,7 @@
+Model, Tokens Out, Tokens In, Cost, UM Test Pass (14 max), AM Test Pass (44 max)
+deepseek-v4-flash,5.4m,322k,$3.12,14,44
+gemini-3-1-pro,574k,22k,$4.05,14,44
+gemma-4-31b-it,6.3m,79.1k,$0.79,14,25
+minimax-2-7-fireworks,18m,194k,$6.5,12,7
+qwen-3-5-122b,32m,368k,$9.08,14,27
+qwen-3-6-plus,17.6m,460k,$11.35,14,41
