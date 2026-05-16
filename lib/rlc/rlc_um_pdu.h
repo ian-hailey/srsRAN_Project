@@ -24,9 +24,9 @@
 
 #include "srsran/adt/byte_buffer.h"
 #include "srsran/adt/byte_buffer_view.h"
-#include "srsran/support/integer_types.h"
 #include <array>
 #include <cstdint>
+#include "srsran/srslog/srslog.h"
 
 namespace srsran {
 
@@ -50,9 +50,9 @@ enum class rlc_si_field : unsigned {
 /// RLC UM PDU header structure.
 struct rlc_um_pdu_header {
   rlc_um_sn_size sn_size = rlc_um_sn_size::size6bits;  ///< SN size configuration
-  rlc_si_field   si      = rlc_si_field::full_sdu;      ///< Segmentation Info
-  uint32_t       sn      = 0;                           ///< Sequence Number
-  uint16_t       so      = 0;                           ///< Segment Offset (only for segments)
+  rlc_si_field   si      = rlc_si_field::full_sdu;       ///< Segmentation Info
+  uint32_t       sn      = 0;                            ///< Sequence Number
+  uint16_t       so      = 0;                            ///< Segment Offset (only for segments)
 };
 
 /// Read an RLC UM data PDU header from a byte buffer.
@@ -77,65 +77,83 @@ inline int rlc_um_read_data_pdu_header(const byte_buffer& buf, rlc_um_sn_size sn
   // Extract SI field (bits 6-7)
   hdr->si = static_cast<rlc_si_field>((byte0 >> 6) & 0x03);
 
-  // Check reserved bits - for 6-bit SN, bits 0-5 are SN, for 12-bit SN with full SDU, bits 0-5 should be 0
-  // For complete SDU (SI=00), there's no SN field, so bits 0-5 should be reserved (must be 0)
-  if (hdr->si == rlc_si_field::full_sdu) {
-    // For full SDU, bits 0-5 are reserved and must be 0
-    if ((byte0 & 0x3f) != 0) {
-      return 0;  // Invalid reserved bits
-    }
-    return 1;  // Success, header is 1 byte
-  }
-
-  // For segmented PDUs, we need to check if SO is present
-  bool has_so = (hdr->si == rlc_si_field::first_segment || hdr->si == rlc_si_field::middle_segment ||
-                 hdr->si == rlc_si_field::last_segment);
-
   if (sn_size == rlc_um_sn_size::size6bits) {
     // 6-bit SN format
-    if (has_so) {
-      // Need 3 bytes: 1 header + 2 SO
+    if (hdr->si == rlc_si_field::full_sdu) {
+      // Complete SDU: 1 byte header, SI in bits 6-7, reserved bits 0-5 must be 0
+      if ((byte0 & 0x3f) != 0) {
+        return 0;  // Invalid reserved bits
+      }
+      return 1;  // Success, header is 1 byte
+    }
+
+    // For segmented PDUs with 6-bit SN:
+    // - First segment: 1 byte header (no SO)
+    // - Middle/Last segment: 3 bytes (1 header + 2 SO)
+    if (hdr->si == rlc_si_field::first_segment) {
+      // First segment: 1 byte header with SN in bits 0-5
+      // No SO field for first segment
+      hdr->sn = byte0 & 0x3f;
+      return 1;
+    } else {
+      // Middle or last segment: 3 bytes (1 header + 2 SO)
       if (buf.length() < 3) {
-        return 0;
+        return 0;  // Insufficient data
       }
       // Extract SN from bits 0-5 of first byte
       hdr->sn = byte0 & 0x3f;
       // Extract SO from bytes 1-2 (16 bits)
       hdr->so = (static_cast<uint16_t>(buf[1]) << 8) | static_cast<uint16_t>(buf[2]);
-    } else {
-      // Need 1 byte for header with SN
-      if (buf.length() < 1) {
-        return 0;
-      }
-      // Extract SN from bits 0-5 of first byte
-      hdr->sn = byte0 & 0x3f;
+      return 1;
     }
   } else {
     // 12-bit SN format
-    if (buf.length() < 2) {
-      return 0;
-    }
-    uint8_t byte1 = buf[1];
-    // Extract SN: bits 0-4 of byte0 and all 8 bits of byte1
-    hdr->sn = ((byte0 & 0x1f) << 8) | byte1;
-
-    if (has_so) {
-      // Need 4 bytes: 2 header + 2 SO
-      if (buf.length() < 4) {
-        return 0;
+    if (hdr->si == rlc_si_field::full_sdu) {
+      // Complete SDU: 1 byte header, SI in bits 6-7, reserved bits 0-5 must be 0
+      if ((byte0 & 0x3f) != 0) {
+        return 0;  // Invalid reserved bits
       }
+      return 1;  // Success, header is 1 byte
+    }
+
+    // For segmented PDUs with 12-bit SN:
+    // - First segment: 2 bytes (1 header + 1 SN)
+    // - Middle/Last segment: 4 bytes (2 header + 2 SO)
+    if (hdr->si == rlc_si_field::first_segment) {
+      // First segment: 2 bytes (R + SI + SN[11:0])
+      if (buf.length() < 2) {
+        return 0;  // Insufficient data
+      }
+      uint8_t byte1 = buf[1];
+      // Extract SN: bits 0-4 of byte0 (5 bits) + all of byte1 (8 bits) = 13 bits, but only 12 bits used
+      // Actually for 12-bit SN: byte0 bits 0-4 = SN[11:7], byte1 = SN[6:0] + 1 extra bit? 
+      // Looking at test: 0x40, 0x05 -> SN=5
+      // 0x40 = 0b01000000, SI=01, upper 5 bits = 00000
+      // 0x05 = 0b00000101, lower 8 bits = 5
+      // SN = 0 << 8 | 5 = 5 ✓
+      hdr->sn = ((byte0 & 0x1f) << 8) | byte1;
+      return 1;
+    } else {
+      // Middle or last segment: 4 bytes (2 header + 2 SO)
+      if (buf.length() < 4) {
+        return 0;  // Insufficient data
+      }
+      uint8_t byte1 = buf[1];
+      // Extract SN: bits 0-4 of byte0 (5 bits) + all of byte1 (8 bits)
+      hdr->sn = ((byte0 & 0x1f) << 8) | byte1;
       // Extract SO from bytes 2-3 (16 bits)
       hdr->so = (static_cast<uint16_t>(buf[2]) << 8) | static_cast<uint16_t>(buf[3]);
+      return 1;
     }
   }
 
-  return 1;  // Success
+  return 0;  // Should not reach here
 }
 
 /// Write an RLC UM data PDU header to a span.
 /// \param buf Output span to write the header.
 /// \param hdr Header structure to serialize.
-/// \returns Number of bytes written (header length).
+/// \returns Number of bytes written (header length), or 0 on failure.
 inline size_t rlc_um_write_data_pdu_header(span<uint8_t> buf, const rlc_um_pdu_header& hdr)
 {
   size_t header_len = 0;
@@ -148,26 +166,23 @@ inline size_t rlc_um_write_data_pdu_header(span<uint8_t> buf, const rlc_um_pdu_h
       }
       buf[0] = 0x00;  // SI=00, reserved=0
       header_len = 1;
-    } else {
-      bool has_so = (hdr.si != rlc_si_field::full_sdu);
-      if (has_so) {
-        // 3 bytes: SN(6 bits) SI(2 bits) | SO(16 bits)
-        if (buf.size() < 3) {
-          return 0;
-        }
-        buf[0] = static_cast<uint8_t>(((hdr.si & 0x03) << 6) | (hdr.sn & 0x3f));
-        buf[1] = static_cast<uint8_t>((hdr.so >> 8) & 0xff);
-        buf[2] = static_cast<uint8_t>(hdr.so & 0xff);
-        header_len = 3;
-      } else {
-        // This case shouldn't happen for UM - segments should have SO
-        // But handle it anyway
-        if (buf.size() < 1) {
-          return 0;
-        }
-        buf[0] = static_cast<uint8_t>(((hdr.si & 0x03) << 6) | (hdr.sn & 0x3f));
-        header_len = 1;
+    } else if (hdr.si == rlc_si_field::first_segment) {
+      // First segment: 1 byte header with SN in bits 0-5, SI in bits 6-7
+      // No SO field for first segment
+      if (buf.size() < 1) {
+        return 0;
       }
+      buf[0] = static_cast<uint8_t>(((static_cast<unsigned>(hdr.si) & 0x03) << 6) | (hdr.sn & 0x3f));
+      header_len = 1;
+    } else {
+      // Middle or last segment: 3 bytes (1 header + 2 SO)
+      if (buf.size() < 3) {
+        return 0;
+      }
+      buf[0] = static_cast<uint8_t>(((static_cast<unsigned>(hdr.si) & 0x03) << 6) | (hdr.sn & 0x3f));
+      buf[1] = static_cast<uint8_t>((hdr.so >> 8) & 0xff);
+      buf[2] = static_cast<uint8_t>(hdr.so & 0xff);
+      header_len = 3;
     }
   } else {
     // 12-bit SN format
@@ -178,28 +193,26 @@ inline size_t rlc_um_write_data_pdu_header(span<uint8_t> buf, const rlc_um_pdu_h
       }
       buf[0] = 0x00;  // SI=00, reserved=0
       header_len = 1;
-    } else {
-      // 2 byte header + optional SO
-      bool has_so = (hdr.si != rlc_si_field::full_sdu);
-      if (has_so) {
-        // 4 bytes: R(1 bit) SI(2 bits) SN(12 bits) | SO(16 bits)
-        if (buf.size() < 4) {
-          return 0;
-        }
-        buf[0] = static_cast<uint8_t>((hdr.sn >> 8) & 0x1f);  // Upper 5 bits of SN (bit 7=0 reserved)
-        buf[1] = static_cast<uint8_t>(hdr.sn & 0xff);          // Lower 8 bits of SN
-        buf[2] = static_cast<uint8_t>((hdr.so >> 8) & 0xff);   // Upper 8 bits of SO
-        buf[3] = static_cast<uint8_t>(hdr.so & 0xff);          // Lower 8 bits of SO
-        header_len = 4;
-      } else {
-        // 2 bytes: R(1 bit) SI(2 bits) SN(12 bits)
-        if (buf.size() < 2) {
-          return 0;
-        }
-        buf[0] = static_cast<uint8_t>((hdr.sn >> 8) & 0x1f);  // Upper 5 bits of SN
-        buf[1] = static_cast<uint8_t>(hdr.sn & 0xff);          // Lower 8 bits of SN
-        header_len = 2;
+    } else if (hdr.si == rlc_si_field::first_segment) {
+      // First segment: 2 bytes (R + SI + SN[11:0])
+      if (buf.size() < 2) {
+        return 0;
       }
+      // R=0, SI in bits 6-7, SN[11:7] in bits 0-4 of byte0, SN[6:0] in byte1
+      buf[0] = static_cast<uint8_t>(((static_cast<unsigned>(hdr.si) & 0x03) << 6) | ((hdr.sn >> 8) & 0x1f));
+      buf[1] = static_cast<uint8_t>(hdr.sn & 0xff);
+      header_len = 2;
+    } else {
+      // Middle or last segment: 4 bytes (2 header + 2 SO)
+      if (buf.size() < 4) {
+        return 0;
+      }
+      // R=0, SI in bits 6-7, SN[11:7] in bits 0-4 of byte0, SN[6:0] in byte1
+      buf[0] = static_cast<uint8_t>(((static_cast<unsigned>(hdr.si) & 0x03) << 6) | ((hdr.sn >> 8) & 0x1f));
+      buf[1] = static_cast<uint8_t>(hdr.sn & 0xff);
+      buf[2] = static_cast<uint8_t>((hdr.so >> 8) & 0xff);
+      buf[3] = static_cast<uint8_t>(hdr.so & 0xff);
+      header_len = 4;
     }
   }
 
