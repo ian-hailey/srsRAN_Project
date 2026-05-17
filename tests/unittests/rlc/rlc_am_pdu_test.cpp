@@ -20,8 +20,9 @@
  *
  */
 
-#include "lib/rlc/rlc_am_pdu.h"
+#include "srsran/rlc/rlc_am_pdu.h"
 #include "srsran/adt/byte_buffer.h"
+#include "srsran/srslog/srslog.h"
 #include <gtest/gtest.h>
 
 using namespace srsran;
