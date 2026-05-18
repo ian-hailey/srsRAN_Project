@@ -4,7 +4,7 @@
 
 This repository was used to conduct an experiment evaluating the software engineering capabilities of modern Large Language Models (LLMs) within the telecommunications domain. The objective was to determine how effectively different AI models (Gemini, DeepSeek, Qwen, Gemma, MiniMax) could autonomously re-implement the 3GPP RLC (Radio Link Control) layer purely from the 3GPP 38.322 specifications and unit tests.
 
-👉 **[Read the full experiment methodology, model chat logs, and results here](llm_eval/LLM_RLC_EXPERIMENT.md)** 📊
+👉 **[Read the full experiment methodology and results here](llm_eval/LLM_RLC_EXPERIMENT.md)** 📊
 
 ---
 *(The original srsRAN_Project README follows below)*

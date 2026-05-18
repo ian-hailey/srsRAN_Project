@@ -21,7 +21,7 @@ The models were evaluated on total tests passed (maximum 58), token utilisation,
 * **🏆 Top Tier (Passed All 58 Tests):** Only two models successfully navigated every test case: Gemini-3.1-Pro and DeepSeek-V4-Flash.
 * **⚡ Most Efficient:** Gemini-3.1-Pro achieved a flawless score whilst remaining highly token-efficient (utilising fewer than 1 million tokens) at a modest cost of $4.05.
 * **💰 Most Cost-Effective:** DeepSeek-V4-Flash also attained a 58/58 score and proved the most economical at just $3.12, although it required significantly more iterative token usage (~6M tokens) to achieve this.
-* **📉 The Remainder:** Other models, such as the Qwen variants, struggled. They consumed substantial token volumes (18M to over 32M), incurred higher costs, and ultimately failed to pass the complete test suite.
+* **📉 The Remainder:** The other (much smaller) models, struggled. They consumed substantial token volumes (up to over 32M), took considerably more time, and ultimately failed to pass the complete test suite. None the less all of these models performed incredibly well especially when considered from a model size perspective.
 
 ## 🧠 Problem-Solving Approaches
 
@@ -51,53 +51,45 @@ Open-source projects with comprehensive test suites, like srsRAN_Project, provid
 
 For those interested in the precise figures and how each model approached the prompt, here is a summary derived from their chat logs:
 
-### 🥇 1. Gemini 3.1 Pro (`gemini-3-1-pro`)
+### 🥇 1. Gemini 3.1 Pro 
 * **Parameters:** Proprietary MoE (Estimated multi-trillion)
 * **Results:** 14/14 UM Tests, 44/44 AM Tests (Total: 58/58)
-* **Tokens:** ~22K In | ~574K Out
-* **Context:** 247k of 1.0m
+* **Tokens:** 22k In | 574k Out
+* **Context:** 1.0m
 * **Cost:** $4.05
 * **Summary:** Highly efficient. It methodically generated a comprehensive execution plan based on the prompts. It appeared to internalise the 3GPP specification immediately, resulting in minimal token usage and a perfect pass rate.
 
-### 🥈 2. DeepSeek v4 Flash (`deepseek-v4-flash`)
+### 🥈 2. DeepSeek v4 Flash 
 * **Parameters:** Open-weights MoE (284B total / 13B active)
 * **Results:** 14/14 UM Tests, 44/44 AM Tests (Total: 58/58)
-* **Tokens:** ~322K In | ~5.4M Out
-* **Context:** 148k of 1.0m
+* **Tokens:** 322k In | 5.4M Out
+* **Context:** 1.0M
 * **Cost:** $3.12
 * **Summary:** The most cost-effective. It relied heavily upon reviewing C++ test error outputs and adjusting its implementations based on explicit test expectations. It required greater token expenditure to adjust headers and bitwise operations, but its low cost-per-token ratio renders it highly viable.
 
-### 🥉 3. Qwen 3.6 Plus (`qwen-3-6-plus`)
-* **Parameters:** Proprietary Hybrid (Estimated ~0.5-1T parameters)
-* **Results:** 14/14 UM Tests, 41/44 AM Tests (Total: 55/58)
-* **Tokens:** ~460K In | ~17.6M Out
-* **Context:** 429k of 1.0m
-* **Cost:** $11.35
-* **Summary:** A commendable effort, but it struggled significantly with edge cases. It easily passed the UM PDU tests but encountered immense difficulty with the complexity of 18-bit Sequence Number logic and Status PDU packing/unpacking in Acknowledged Mode (AM).
-
-### 📉 4. Qwen 3.5 122B (`qwen-3-5-122b`)
+### 📉 3. MiniMax 2.7
+* **Parameters:** Proprietary MoE (230B Total / 10B (est) active)
+* **Results:** 14/14 UM Tests, 29/44 AM Tests (Total: 43/58)
+* **Tokens:** 337k In | 15M Out
+* **Context:** 204k
+* **Cost:** $2.31
+* **Summary:** The model quickly and successfully implemented the UM PDU header functionality, passing all 14 tests. However, it struggled significantly with the AM PDU implementation. While it correctly identified the required file structures, it became entangled in bitwise operation errors. Specifically, it failed to correctly shift and mask bits for the 12-bit and 18-bit Sequence Numbers (SN) and the NACK_SN fields. Despite repeatedly running the test suite and correctly diagnosing the off-by-one and shifted bit issues from the test output, it was unable to formulate the correct bitwise arithmetic to pack and unpack the headers according to the 3GPP TS 38.322 specification, leading to a loop of failed compilation and test runs.
+ 
+### 📉 4. Qwen 3.5 122B
 * **Parameters:** Open-weights MoE (122B total / 10B active)
 * **Results:** 14/14 UM Tests, 27/44 AM Tests (Total: 41/58)
-* **Tokens:** ~368K In | ~32M Out
-* **Context:** 169k of 248k
-* **Cost:** $9.08
-* **Summary:** Expended an enormous volume of tokens, started well but progress rapidly slowed. It encountered an early obstacle parsing 12-bit SN segmented PDUs and demonstrated fundamental difficulties in understanding how 3GPP expects bits to be packed across byte boundaries.
+* **Tokens:** 368k In | 32M Out
+* **Context:** 248k
+* **Cost:** $4.92
+* **Summary:** Expended an enormous volume of tokens and successfully navigated complex C++ compiler errors (such as template instantiations, shadowing, and initialization reordering) to get the full test suite compiling. Performed well on the Unacknowledged Mode (UM) implementation. However, progress rapidly slowed during the Acknowledged Mode (AM) implementation (passing 27/44 tests). It encountered significant obstacles parsing segmented PDUs and handling 18-bit SNs in Status PDUs, demonstrating fundamental difficulties in understanding how 3GPP expects bits to be packed and shifted across byte boundaries, which resulted in numerous assertion failures during testing.
 
-### 📉 5. Gemma 4 31B IT (`gemma-4-31b-it`)
+### 📉 5. Gemma 4 31B IT
 * **Parameters:** Open-weights Dense (31B total)
-* **Results:** 14/14 UM Tests, 25/44 AM Tests (Total: 39/58)
-* **Tokens:** ~6.3M In | ~79.1K Out
-* **Context:** 150k of 256k
-* **Cost:** $0.79
-* **Summary:** Processed a substantial amount of context but produced minimal code. It correctly implemented the basic UM headers but failed to comprehend the complexity of the AM status reports and segmentations.
-
-### 📉 6. MiniMax 2.7 (`minimax-2-7`)
-* **Parameters:** Proprietary MoE (Total & active parameters unknown)
-* **Results:** 12/14 UM Tests, 7/44 AM Tests (Total: 19/58)
-* **Tokens:** ~194K In | ~18M Out
-* **Context:** 160k of 204k
-* **Cost:** $6.50
-* **Summary:** Adopted a rapid "stubbing" approach, generating placeholder files quickly but failing to deliver the actual protocol implementation. It became trapped in loops of failed test runs without identifying the root cause of its bitfield errors. Out of all the results this is the one which suprised me as this model is otherwise excellent, needs further investigation. 
+* **Results:** 11/14 UM Tests, 14/44 AM Tests (Total: 25/58)
+* **Tokens:** 232k In | 28M Out
+* **Context:** 256k
+* **Cost:** $3.44
+* **Summary:** Successfully architected the requested module structure (TM/UM/AM entities, support queues, and factory), compiled `srsran_rlc` library despite struggles with C++ typing and enum comparisons. It performed decently on Unacknowledged Mode (UM), passing 11/14 tests, indicating a good grasp of basic UM headers and segmentation. However, it performed poorly on Acknowledged Mode (AM), passing only 14/44 tests, demonstrating an inability to correctly implement the complex logic required for AM status reports, ARQ window management, and complex segmentations.
 
 ---
 
@@ -106,7 +98,7 @@ For those interested in the precise figures and how each model approached the pr
 Inference models provided by:
 * **Google** for the Gemini and Gemma series.
 * **DeepSeek** for the DeepSeek series.
-* **Alibaba Cloud** for the Qwen series.
+* **Qwen AI** for the Qwen series.
 * **MiniMax** for the MiniMax series.
 
 Inference services provided by:
@@ -115,5 +107,7 @@ Inference services provided by:
 * **OpenRouter**
 
 Agentic coding assistant extension for VSCode provided by **Cline**
+
+Specifications by **3GPP** 
 
 Lastly credit to the **SRS** team for open-sourcing their excellent RAN project, which provided the high-quality architecture and comprehensive test suites that made this experiment possible.
